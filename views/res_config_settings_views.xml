@@ -11,23 +11,72 @@
                     <div class="app_settings_block" data-string="Auto Email Activity" string="Auto Email Activity" data-key="auto_email_activity_creation">
                         <h2>Email Activity Creation</h2>
                         <div class="row mt16 o_settings_container">
-                            <div class="col-12 col-lg-6 o_setting_box">
+                            <div class="col-12 col-lg-8 o_setting_box">
                                 <div class="o_setting_left_pane">
                                     <field name="auto_email_activity_enabled"/>
                                 </div>
                                 <div class="o_setting_right_pane">
                                     <label for="auto_email_activity_enabled"/>
                                     <div class="text-muted">
-                                        Create completed activities when external emails are sent
+                                        Automatically create completed activities when external emails are sent via chatter in Helpdesk and Sales apps
                                     </div>
-                                    <div class="content-group" invisible="not auto_email_activity_enabled">
-                                        <div class="mt16">
-                                            <field name="auto_email_for_sales"/>
-                                            <label for="auto_email_for_sales"/>
+                                    
+                                    <div class="content-group mt16" invisible="auto_email_activity_enabled == False">
+                                        <!-- User Groups Selection -->
+                                        <div class="row">
+                                            <div class="col-12">
+                                                <label for="selected_groups_ids" class="o_form_label">
+                                                    <strong>User Groups</strong>
+                                                </label>
+                                                <div class="text-muted small mb8">
+                                                    Select which user groups will have automatic email activities created
+                                                </div>
+                                                
+                                                <field name="selected_groups_ids" widget="many2many" mode="tree">
+                                                    <tree editable="bottom" create="true" delete="true">
+                                                        <field name="group_id" required="1"/>
+                                                        <field name="active"/>
+                                                        <field name="user_count" readonly="1"/>
+                                                    </tree>
+                                                </field>
+                                            </div>
                                         </div>
-                                        <div class="mt8">
-                                            <field name="auto_email_for_support"/>
-                                            <label for="auto_email_for_support"/>
+                                        
+                                        <!-- Summary Information -->
+                                        <div class="row mt16">
+                                            <div class="col-6">
+                                                <div class="alert alert-info" role="alert">
+                                                    <i class="fa fa-users mr8"/>
+                                                    <strong>Total Affected Users:</strong>
+                                                    <field name="total_affected_users" readonly="1" class="ml8"/>
+                                                </div>
+                                            </div>
+                                            <div class="col-6">
+                                                <button string="Manage Groups" 
+                                                        type="object" 
+                                                        name="action_view_selected_groups"
+                                                        class="btn btn-secondary btn-sm"
+                                                        invisible="selected_groups_ids == []"
+                                                        icon="fa-cog">
+                                                </button>
+                                                <button string="Add Groups" 
+                                                        type="object" 
+                                                        name="action_add_user_group"
+                                                        class="btn btn-primary btn-sm ml8"
+                                                        icon="fa-plus">
+                                                </button>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- Information Alert -->
+                                        <div class="alert alert-warning mt16" role="alert">
+                                            <h6><i class="fa fa-info-circle mr8"/>Important Notes:</h6>
+                                            <ul class="mb0">
+                                                <li>Activities will only be created for emails sent through chatter in <strong>Sales Orders</strong>, <strong>CRM Leads</strong>, and <strong>Helpdesk Tickets</strong></li>
+                                                <li>Only <strong>external emails</strong> (to customers/partners) will trigger activity creation</li>
+                                                <li>Users must have <strong>write access</strong> to the record to create activities</li>
+                                                <li>Deactivated groups will not trigger activity creation even if selected</li>
+                                            </ul>
                                         </div>
                                     </div>
                                 </div>
@@ -35,6 +84,57 @@
                         </div>
                     </div>
                 </xpath>
+            </field>
+        </record>
+        
+        <!-- Group Configuration Form View -->
+        <record id="auto_email_group_config_view_form" model="ir.ui.view">
+            <field name="name">auto.email.group.config.view.form</field>
+            <field name="model">auto.email.group.config</field>
+            <field name="arch" type="xml">
+                <form string="Auto Email Group Configuration">
+                    <sheet>
+                        <div class="oe_title">
+                            <h1>
+                                <field name="group_id" placeholder="Select User Group..."/>
+                            </h1>
+                        </div>
+                        <group>
+                            <field name="active"/>
+                            <field name="user_count" readonly="1"/>
+                        </group>
+                    </sheet>
+                </form>
+            </field>
+        </record>
+        
+        <!-- Group Configuration Tree View -->
+        <record id="auto_email_group_config_view_tree" model="ir.ui.view">
+            <field name="name">auto.email.group.config.view.tree</field>
+            <field name="model">auto.email.group.config</field>
+            <field name="arch" type="xml">
+                <tree string="Auto Email Group Configuration" editable="bottom">
+                    <field name="group_id" required="1"/>
+                    <field name="active"/>
+                    <field name="user_count" readonly="1"/>
+                </tree>
+            </field>
+        </record>
+        
+        <!-- Group Configuration Action -->
+        <record id="auto_email_group_config_action" model="ir.actions.act_window">
+            <field name="name">Auto Email Activity Groups</field>
+            <field name="type">ir.actions.act_window</field>
+            <field name="res_model">auto.email.group.config</field>
+            <field name="view_mode">tree,form</field>
+            <field name="help" type="html">
+                <p class="o_view_nocontent_smiling_face">
+                    Add user groups for automatic email activity creation
+                </p>
+                <p>
+                    Select which user groups should have automatic email activities created 
+                    when they send external emails through chatter in Sales and Helpdesk apps.
+                </p>
             </field>
         </record>
     </data>

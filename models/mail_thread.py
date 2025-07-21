@@ -28,15 +28,8 @@ class MailThread(models.AbstractModel):
             _logger.warning(f"User {self.env.user.login} cannot read auto email activity config - feature disabled")
             return message
             
-        # Check if the user belongs to sales or support groups
-        user = self.env.user
-        is_sales = user.has_group('sales_team.group_sale_salesman') or user.has_group('sales_team.group_sale_manager')
-        is_support = user.has_group('helpdesk.group_helpdesk_user') or user.has_group('helpdesk.group_helpdesk_manager')
-        
-        # Get group settings with proper access control
-        sales_enabled, support_enabled = self._get_group_settings()
-        
-        if not ((is_sales and sales_enabled) or (is_support and support_enabled)):
+        # Check if the user belongs to any of the configured groups
+        if not self._user_in_configured_groups():
             return message
         
         # Check if we're in the correct application context (Helpdesk or Sales)
@@ -54,13 +47,10 @@ class MailThread(models.AbstractModel):
             _logger.info(f"User {self.env.user.login} lacks permission to create activity on {self._name}:{self.id}")
             return message
             
-        # Get external recipients for activity summary
-        recipient_emails = []
-        for partner in message.partner_ids:
-            if not partner.user_ids:  # External partner without user account
-                recipient_emails.append(partner.email or partner.name)
-        
-        if not recipient_emails:
+        # Get recipients for activity summary
+        external_emails = self._get_external_recipients(message)
+
+        if not external_emails:
             return message
             
         # Create a completed activity
@@ -69,8 +59,8 @@ class MailThread(models.AbstractModel):
             
             # Create and mark as done in one step
             activity_values = {
-                'summary': _('Email sent to %s') % ', '.join(recipient_emails[:3]) + 
-                          (', ...' if len(recipient_emails) > 3 else ''),
+                'summary': _('Email sent to %s') % ', '.join(external_emails[:3]) + 
+                          (', ...' if len(external_emails) > 3 else ''),
                 'note': message.body,
                 'activity_type_id': activity_type.id,
                 'user_id': self.env.user.id,
@@ -90,38 +80,58 @@ class MailThread(models.AbstractModel):
         
         return message
     
-    def _should_process_for_activity_creation(self, message):
-        """Early filtering to avoid unnecessary processing."""
-        # Only process email messages
+    def _is_outgoing_external_email(self, message):
+        """Check if this is an outgoing email in a Helpdesk/Sales context."""
+        # Must be an email message type
         if message.message_type != 'email':
             return False
         
-        # Must have email_from (outgoing email)
+        # Must have sender (outgoing)
         if not message.email_from:
             return False
         
         # Must have recipients
-        if not (message.recipient_ids or message.partner_ids):
+        if not message.partner_ids:
             return False
         
-        # Skip internal messages early
-        if getattr(message, 'is_internal', False):
-            return False
-        
+        # In Helpdesk/Sales context, if we're sending via chatter, it's external
+        # The business logic ensures internal users don't have tickets/orders
         return True
     
-    def _get_group_settings(self):
-        """Get group settings with proper access control."""
+    def _get_external_recipients(self, message):
+        """Get email recipients - simplified for Helpdesk/Sales context."""
+        recipient_emails = []
+        
+        for partner in message.partner_ids:
+            email = partner.email or partner.name
+            if email:
+                recipient_emails.append(email)
+        
+        return recipient_emails
+    
+    def _user_in_configured_groups(self):
+        """Check if current user belongs to any of the configured groups for auto email activities."""
         try:
-            sales_enabled = self.env['ir.config_parameter'].get_param(
-                'auto_email_activity_creation.for_sales', 'True') == 'True'
-            support_enabled = self.env['ir.config_parameter'].get_param(
-                'auto_email_activity_creation.for_support', 'True') == 'True'
-            return sales_enabled, support_enabled
-        except AccessError:
-            # If user can't read settings, default to disabled for security
-            _logger.warning(f"User {self.env.user.login} cannot read group settings - defaulting to disabled")
-            return False, False
+            # Get all active group configurations
+            active_group_configs = self.env['auto.email.group.config'].search([
+                ('active', '=', True)
+            ])
+            
+            if not active_group_configs:
+                return False
+            
+            # Get the group IDs from the configurations
+            configured_group_ids = active_group_configs.mapped('group_id.id')
+            
+            # Check if current user belongs to any of these groups
+            user_group_ids = self.env.user.groups_id.ids
+            
+            # Return True if there's any intersection
+            return bool(set(configured_group_ids) & set(user_group_ids))
+            
+        except Exception as e:
+            _logger.warning(f"Error checking user groups for {self.env.user.login}: {str(e)}")
+            return False
     
     def _has_required_permissions(self):
         """Check if user has permission to create activities on this record."""
