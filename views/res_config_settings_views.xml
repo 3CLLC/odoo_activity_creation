@@ -7,7 +7,7 @@
             <field name="model">res.config.settings</field>
             <field name="inherit_id" ref="base.res_config_settings_view_form"/>
             <field name="arch" type="xml">
-                <xpath expr="//div[hasclass('settings')]" position="inside">
+                <xpath expr="//sheet" position="inside">
                     <div class="app_settings_block" data-string="Auto Email Activity" string="Auto Email Activity" data-key="auto_email_activity_creation">
                         <h2>Email Activity Creation</h2>
                         <div class="row mt16 o_settings_container">
