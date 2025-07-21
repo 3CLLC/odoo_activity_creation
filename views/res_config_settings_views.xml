@@ -20,7 +20,7 @@
                                     <div class="text-muted">
                                         Create completed activities when external emails are sent
                                     </div>
-                                    <div class="content-group" attrs="{'invisible': [('auto_email_activity_enabled', '=', False)]}">
+                                    <div class="content-group" invisible="not auto_email_activity_enabled">
                                         <div class="mt16">
                                             <field name="auto_email_for_sales"/>
                                             <label for="auto_email_for_sales"/>

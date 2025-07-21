@@ -1,5 +1,5 @@
 from odoo import models, api, fields, _
-from odoo.exceptions import UserError
+from odoo.exceptions import UserError, AccessError
 import logging
 
 _logger = logging.getLogger(__name__)
@@ -14,73 +14,124 @@ class MailThread(models.AbstractModel):
         # Call original method to create the message
         message = super(MailThread, self).message_post(**kwargs)
         
-        # Check if feature is enabled
-        if not self.env['ir.config_parameter'].sudo().get_param('auto_email_activity_creation.enabled', 'True') == 'True':
+        # Add early filtering to reduce processing overhead
+        if not self._should_process_for_activity_creation(message):
+            return message
+        
+        # Check if feature is enabled (without sudo - user should have access to read system parameters they can see)
+        try:
+            enabled = self.env['ir.config_parameter'].get_param('auto_email_activity_creation.enabled', 'True') == 'True'
+            if not enabled:
+                return message
+        except AccessError:
+            # If user can't read config parameters, assume disabled for security
+            _logger.warning(f"User {self.env.user.login} cannot read auto email activity config - feature disabled")
             return message
             
-        # Only proceed if this is an email message being sent to external recipients
-        if (message.message_type == 'email' and 
-            message.email_from and 
-            (message.recipient_ids or message.partner_ids) and 
-            not message.is_internal):
+        # Check if the user belongs to sales or support groups
+        user = self.env.user
+        is_sales = user.has_group('sales_team.group_sale_salesman') or user.has_group('sales_team.group_sale_manager')
+        is_support = user.has_group('helpdesk.group_helpdesk_user') or user.has_group('helpdesk.group_helpdesk_manager')
+        
+        # Get group settings with proper access control
+        sales_enabled, support_enabled = self._get_group_settings()
+        
+        if not ((is_sales and sales_enabled) or (is_support and support_enabled)):
+            return message
+        
+        # Check if we're in the correct application context (Helpdesk or Sales)
+        current_model = self._name
+        
+        # Check if the model belongs to Helpdesk or Sales application
+        is_helpdesk_model = self._is_helpdesk_model(current_model)
+        is_sales_model = self._is_sales_model(current_model)
+        
+        if not (is_helpdesk_model or is_sales_model):
+            return message
             
-            # Check if the user belongs to sales or support groups
-            user = self.env.user
-            is_sales = user.has_group('sales_team.group_sale_salesman') or user.has_group('sales_team.group_sale_manager')
-            is_support = user.has_group('helpdesk.group_helpdesk_user') or user.has_group('helpdesk.group_helpdesk_manager')
+        # Check if user has permission to create activities on this record
+        if not self._has_required_permissions():
+            _logger.info(f"User {self.env.user.login} lacks permission to create activity on {self._name}:{self.id}")
+            return message
             
-            # Check group settings
-            sales_enabled = self.env['ir.config_parameter'].sudo().get_param('auto_email_activity_creation.for_sales', 'True') == 'True'
-            support_enabled = self.env['ir.config_parameter'].sudo().get_param('auto_email_activity_creation.for_support', 'True') == 'True'
+        # Get external recipients for activity summary
+        recipient_emails = []
+        for partner in message.partner_ids:
+            if not partner.user_ids:  # External partner without user account
+                recipient_emails.append(partner.email or partner.name)
+        
+        if not recipient_emails:
+            return message
             
-            if not ((is_sales and sales_enabled) or (is_support and support_enabled)):
-                return message
+        # Create a completed activity
+        try:
+            activity_type = self.env.ref('mail.mail_activity_data_email')
             
-            # Check if we're in the correct application context (Helpdesk or Sales)
-            current_model = self._name
+            # Create and mark as done in one step
+            activity_values = {
+                'summary': _('Email sent to %s') % ', '.join(recipient_emails[:3]) + 
+                          (', ...' if len(recipient_emails) > 3 else ''),
+                'note': message.body,
+                'activity_type_id': activity_type.id,
+                'user_id': self.env.user.id,
+                'res_model_id': self.env['ir.model']._get(self._name).id,
+                'res_id': self.id,
+                'date_deadline': fields.Date.today(),
+            }
             
-            # Check if the model belongs to Helpdesk or Sales application
-            is_helpdesk_model = self._is_helpdesk_model(current_model)
-            is_sales_model = self._is_sales_model(current_model)
+            activity = self.env['mail.activity'].create(activity_values)
+            activity.action_done()
             
-            if not (is_helpdesk_model or is_sales_model):
-                return message
-                
-            # Get external recipients for activity summary
-            recipient_emails = []
-            for partner in message.partner_ids:
-                if not partner.user_ids:  # External partner without user account
-                    recipient_emails.append(partner.email or partner.name)
+            _logger.info(f"Created completed email activity for message {message.id}")
             
-            if not recipient_emails:
-                return message
-                
-            # Create a completed activity
-            try:
-                activity_type = self.env.ref('mail.mail_activity_data_email')
-                
-                # Create and mark as done in one step
-                activity_values = {
-                    'summary': _('Email sent to %s') % ', '.join(recipient_emails[:3]) + 
-                              (', ...' if len(recipient_emails) > 3 else ''),
-                    'note': message.body,
-                    'activity_type_id': activity_type.id,
-                    'user_id': self.env.user.id,
-                    'res_model_id': self.env['ir.model']._get(self._name).id,
-                    'res_id': self.id,
-                    'date_deadline': fields.Date.today(),
-                }
-                
-                activity = self.env['mail.activity'].create(activity_values)
-                activity.action_done()
-                
-                _logger.info(f"Created completed email activity for message {message.id}")
-                
-            except Exception as e:
-                _logger.error(f"Failed to create email activity: {str(e)}")
-                # Don't raise exception, just log it - we don't want to interrupt the email flow
+        except Exception as e:
+            _logger.error(f"Failed to create email activity: {str(e)}")
+            # Don't raise exception, just log it - we don't want to interrupt the email flow
         
         return message
+    
+    def _should_process_for_activity_creation(self, message):
+        """Early filtering to avoid unnecessary processing."""
+        # Only process email messages
+        if message.message_type != 'email':
+            return False
+        
+        # Must have email_from (outgoing email)
+        if not message.email_from:
+            return False
+        
+        # Must have recipients
+        if not (message.recipient_ids or message.partner_ids):
+            return False
+        
+        # Skip internal messages early
+        if getattr(message, 'is_internal', False):
+            return False
+        
+        return True
+    
+    def _get_group_settings(self):
+        """Get group settings with proper access control."""
+        try:
+            sales_enabled = self.env['ir.config_parameter'].get_param(
+                'auto_email_activity_creation.for_sales', 'True') == 'True'
+            support_enabled = self.env['ir.config_parameter'].get_param(
+                'auto_email_activity_creation.for_support', 'True') == 'True'
+            return sales_enabled, support_enabled
+        except AccessError:
+            # If user can't read settings, default to disabled for security
+            _logger.warning(f"User {self.env.user.login} cannot read group settings - defaulting to disabled")
+            return False, False
+    
+    def _has_required_permissions(self):
+        """Check if user has permission to create activities on this record."""
+        # User must have write access to the current record
+        try:
+            self.check_access_rights('write')
+            self.check_access_rule('write')
+            return True
+        except AccessError:
+            return False
         
     def _is_helpdesk_model(self, model_name):
         """Check if the model belongs to Helpdesk application."""
