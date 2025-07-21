@@ -1,14 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
     <data>
-        <!-- Settings form view - TEMPORARILY COMMENTED OUT FOR DEBUGGING -->
-        <!--
+        <!-- Settings form view -->
         <record id="res_config_settings_view_form_inherit_auto_email_activity" model="ir.ui.view">
             <field name="name">res.config.settings.view.form.inherit.auto.email.activity</field>
             <field name="model">res.config.settings</field>
             <field name="inherit_id" ref="base.res_config_settings_view_form"/>
             <field name="arch" type="xml">
-                <xpath expr="//sheet" position="inside">
+                <xpath expr="//div[@id='about']" position="before">
                     <div class="app_settings_block" data-string="Auto Email Activity" string="Auto Email Activity" data-key="auto_email_activity_creation">
                         <h2>Email Activity Creation</h2>
                         <div class="row mt16 o_settings_container">
@@ -38,6 +37,5 @@
                 </xpath>
             </field>
         </record>
-        -->
     </data>
 </odoo>
