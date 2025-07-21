@@ -1,7 +1,7 @@
 # Auto Email Activity Creation
 
 ## Summary
-This Odoo 18.0 module automatically creates a completed activity record when users from specific groups (sales and support) send external emails through the chatter interface in Helpdesk and Sales applications.
+This Odoo module automatically creates a completed activity record when users from specific groups (sales and support) send external emails through the chatter interface in Helpdesk and Sales applications.
 
 ## Purpose
 Track all external communications initiated by sales and support teams without requiring manual activity logging. This provides a comprehensive communication history directly in the activity view.
