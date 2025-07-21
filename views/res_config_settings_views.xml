@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
     <data>
-        <!-- Settings form view -->
+        <!-- Settings form view - TEMPORARILY COMMENTED OUT FOR DEBUGGING -->
+        <!--
         <record id="res_config_settings_view_form_inherit_auto_email_activity" model="ir.ui.view">
             <field name="name">res.config.settings.view.form.inherit.auto.email.activity</field>
             <field name="model">res.config.settings</field>
@@ -37,5 +38,6 @@
                 </xpath>
             </field>
         </record>
+        -->
     </data>
 </odoo>
