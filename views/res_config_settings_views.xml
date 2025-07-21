@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <!-- Settings form view -->
+        <record id="res_config_settings_view_form_inherit_auto_email_activity" model="ir.ui.view">
+            <field name="name">res.config.settings.view.form.inherit.auto.email.activity</field>
+            <field name="model">res.config.settings</field>
+            <field name="inherit_id" ref="base.res_config_settings_view_form"/>
+            <field name="arch" type="xml">
+                <xpath expr="//div[hasclass('settings')]" position="inside">
+                    <div class="app_settings_block" data-string="Auto Email Activity" string="Auto Email Activity" data-key="auto_email_activity_creation">
+                        <h2>Email Activity Creation</h2>
+                        <div class="row mt16 o_settings_container">
+                            <div class="col-12 col-lg-6 o_setting_box">
+                                <div class="o_setting_left_pane">
+                                    <field name="auto_email_activity_enabled"/>
+                                </div>
+                                <div class="o_setting_right_pane">
+                                    <label for="auto_email_activity_enabled"/>
+                                    <div class="text-muted">
+                                        Create completed activities when external emails are sent
+                                    </div>
+                                    <div class="content-group" attrs="{'invisible': [('auto_email_activity_enabled', '=', False)]}">
+                                        <div class="mt16">
+                                            <field name="auto_email_for_sales"/>
+                                            <label for="auto_email_for_sales"/>
+                                        </div>
+                                        <div class="mt8">
+                                            <field name="auto_email_for_support"/>
+                                            <label for="auto_email_for_support"/>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </xpath>
+            </field>
+        </record>
+    </data>
+</odoo>
