@@ -15,7 +15,7 @@
     """,
     'author': 'Patrick Kozlowski',
     'website': 'https://www.3chi.com',
-    'depends': ['mail', 'account' 'helpdesk', 'sale', 'sale_management'],
+    'depends': ['mail', 'helpdesk', 'sale', 'sale_management'],
     'data': [
         'security/ir.model.access.csv',
         'views/res_config_settings_views.xml',
