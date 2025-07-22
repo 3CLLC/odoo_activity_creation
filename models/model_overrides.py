@@ -4,48 +4,6 @@ import logging
 
 _logger = logging.getLogger(__name__)
 
-class SaleOrder(models.Model):
-    _inherit = 'sale.order'
-    
-    def message_post(self, **kwargs):
-        """Override message_post to create an activity when sending an external email via chatter."""
-        
-        # Call original method to create the message first
-        message = super(SaleOrder, self).message_post(**kwargs)
-        
-        # Try to create activity for this message
-        self._maybe_create_email_activity(message)
-        
-        return message
-
-class CrmLead(models.Model):
-    _inherit = 'crm.lead'
-    
-    def message_post(self, **kwargs):
-        """Override message_post to create an activity when sending an external email via chatter."""
-        
-        # Call original method to create the message first
-        message = super(CrmLead, self).message_post(**kwargs)
-        
-        # Try to create activity for this message
-        self._maybe_create_email_activity(message)
-        
-        return message
-
-class HelpdeskTicket(models.Model):
-    _inherit = 'helpdesk.ticket'
-    
-    def message_post(self, **kwargs):
-        """Override message_post to create an activity when sending an external email via chatter."""
-        
-        # Call original method to create the message first
-        message = super(HelpdeskTicket, self).message_post(**kwargs)
-        
-        # Try to create activity for this message
-        self._maybe_create_email_activity(message)
-        
-        return message
-
 # Common mixin for the activity creation logic
 class AutoEmailActivityMixin(models.AbstractModel):
     _name = 'auto.email.activity.mixin'
@@ -228,7 +186,47 @@ class AutoEmailActivityMixin(models.AbstractModel):
             _logger.warning(f"Permission check failed: {str(e)}")
             return False
 
-# Make the models inherit from the mixin
-SaleOrder._inherit = ['sale.order', 'auto.email.activity.mixin']
-CrmLead._inherit = ['crm.lead', 'auto.email.activity.mixin']  
-HelpdeskTicket._inherit = ['helpdesk.ticket', 'auto.email.activity.mixin']
+
+class SaleOrder(models.Model):
+    _inherit = ['sale.order', 'auto.email.activity.mixin']
+    
+    def message_post(self, **kwargs):
+        """Override message_post to create an activity when sending an external email via chatter."""
+        
+        # Call original method to create the message first
+        message = super(SaleOrder, self).message_post(**kwargs)
+        
+        # Try to create activity for this message
+        self._maybe_create_email_activity(message)
+        
+        return message
+
+
+class CrmLead(models.Model):
+    _inherit = ['crm.lead', 'auto.email.activity.mixin']
+    
+    def message_post(self, **kwargs):
+        """Override message_post to create an activity when sending an external email via chatter."""
+        
+        # Call original method to create the message first
+        message = super(CrmLead, self).message_post(**kwargs)
+        
+        # Try to create activity for this message
+        self._maybe_create_email_activity(message)
+        
+        return message
+
+
+class HelpdeskTicket(models.Model):
+    _inherit = ['helpdesk.ticket', 'auto.email.activity.mixin']
+    
+    def message_post(self, **kwargs):
+        """Override message_post to create an activity when sending an external email via chatter."""
+        
+        # Call original method to create the message first
+        message = super(HelpdeskTicket, self).message_post(**kwargs)
+        
+        # Try to create activity for this message
+        self._maybe_create_email_activity(message)
+        
+        return message
