@@ -35,19 +35,6 @@
                                                 <field name="auto_email_user_groups" widget="many2many_tags" 
                                                        domain="[('category_id', '!=', False)]"
                                                        context="{'create': False, 'create_edit': False}"/>
-                                                
-                                                <!-- Show selected groups with user counts -->
-                                                <div class="mt8" invisible="auto_email_user_groups == []">
-                                                    <strong>Selected Groups:</strong>
-                                                    <field name="auto_email_user_groups" mode="list" readonly="1">
-                                                        <list>
-                                                            <field name="name"/>
-                                                            <field name="users" string="Active Users">
-                                                                <span><field name="users"/> users</span>
-                                                            </field>
-                                                        </list>
-                                                    </field>
-                                                </div>
                                             </div>
                                         </div>
                                         
