@@ -11,15 +11,29 @@ class MailThread(models.AbstractModel):
     def message_post(self, **kwargs):
         """Override message_post to create an activity when sending an external email via chatter."""
         
+        # Debug logging - let's see what's happening
+        _logger.info(f"=== DEBUG: message_post called on {self._name} ===")
+        _logger.info(f"DEBUG: kwargs = {kwargs}")
+        _logger.info(f"DEBUG: context = {self.env.context}")
+        
         # Call original method to create the message first
         message = super(MailThread, self).message_post(**kwargs)
         
+        _logger.info(f"DEBUG: Created message ID {message.id if message else 'None'}")
+        if message:
+            _logger.info(f"DEBUG: Message type = {message.message_type}")
+            _logger.info(f"DEBUG: Message email_from = {message.email_from}")
+            _logger.info(f"DEBUG: Message partner_ids = {message.partner_ids}")
+            _logger.info(f"DEBUG: Message author_id = {message.author_id}")
+        
         # Skip processing if this is a recursive call or system-generated message
         if self.env.context.get('auto_email_activity_skip'):
+            _logger.info("DEBUG: Skipping due to context flag")
             return message
             
         # Only process email messages
         if not message or message.message_type != 'email':
+            _logger.info(f"DEBUG: Skipping - not email message (type: {message.message_type if message else 'None'})")
             return message
             
         # Check if feature is enabled
