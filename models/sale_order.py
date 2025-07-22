@@ -75,8 +75,7 @@ class SaleOrder(models.Model):
             _logger.info("DEBUG: Creating email activity...")
             
             # Use context to prevent recursive calls
-            with_context = self.env.with_context(auto_email_activity_skip=True)
-            activity_type = with_context.env.ref('mail.mail_activity_data_email')
+            activity_type = self.env.ref('mail.mail_activity_data_email')
             
             # Create and mark as done in one step
             activity_values = {
@@ -90,7 +89,8 @@ class SaleOrder(models.Model):
                 'date_deadline': fields.Date.today(),
             }
             
-            activity = with_context.env['mail.activity'].create(activity_values)
+            # Create activity with context to prevent recursion
+            activity = self.env['mail.activity'].with_context(auto_email_activity_skip=True).create(activity_values)
             activity.action_done()
             
             _logger.info(f"Successfully created completed email activity for message {message.id}")
@@ -229,12 +229,11 @@ class SaleOrder(models.Model):
     def _has_required_permissions(self):
         """Check if user has permission to create activities on this record."""
         try:
-            # User must have write access to the current record
-            self.check_access_rights('write')
-            self.check_access_rule('write')
+            # User must have write access to the current record (Odoo 18 syntax)
+            self.check_access('write')
             
-            # Also check if user can create activities
-            self.env['mail.activity'].check_access_rights('create')
+            # Also check if user can create activities (Odoo 18 syntax)
+            self.env['mail.activity'].check_access('create')
             return True
         except AccessError:
             return False
