@@ -22,26 +22,29 @@
                                     </div>
                                     
                                     <div class="content-group mt16" invisible="auto_email_activity_enabled == False">
-                                        <!-- User Groups Selection -->
+                                        <!-- User Groups Selection - Direct selection from res.groups -->
                                         <div class="row">
                                             <div class="col-12">
-                                                <label for="selected_groups_ids" class="o_form_label">
+                                                <label for="auto_email_user_groups" class="o_form_label">
                                                     <strong>User Groups</strong>
                                                 </label>
                                                 <div class="text-muted small mb8">
                                                     Select which user groups will have automatic email activities created
                                                 </div>
                                                 
-                                                <field name="selected_groups_ids" widget="many2many_tags"/>
+                                                <field name="auto_email_user_groups" widget="many2many_tags" 
+                                                       domain="[('category_id', '!=', False)]"
+                                                       context="{'create': False, 'create_edit': False}"/>
                                                 
-                                                <!-- Show selected groups in a list -->
-                                                <div class="mt8" invisible="selected_groups_ids == []">
+                                                <!-- Show selected groups with user counts -->
+                                                <div class="mt8" invisible="auto_email_user_groups == []">
                                                     <strong>Selected Groups:</strong>
-                                                    <field name="selected_groups_ids" mode="list" readonly="1">
+                                                    <field name="auto_email_user_groups" mode="list" readonly="1">
                                                         <list>
-                                                            <field name="group_id"/>
-                                                            <field name="active"/>
-                                                            <field name="user_count"/>
+                                                            <field name="name"/>
+                                                            <field name="users" string="Active Users">
+                                                                <span><field name="users"/> users</span>
+                                                            </field>
                                                         </list>
                                                     </field>
                                                 </div>
@@ -60,16 +63,10 @@
                                             <div class="col-6">
                                                 <button string="Manage Groups" 
                                                         type="object" 
-                                                        name="action_view_selected_groups"
+                                                        name="action_view_group_configs"
                                                         class="btn btn-secondary btn-sm"
-                                                        invisible="selected_groups_ids == []"
+                                                        invisible="auto_email_user_groups == []"
                                                         icon="fa-cog">
-                                                </button>
-                                                <button string="Add Groups" 
-                                                        type="object" 
-                                                        name="action_add_user_group"
-                                                        class="btn btn-primary btn-sm ml8"
-                                                        icon="fa-plus">
                                                 </button>
                                             </div>
                                         </div>
@@ -81,7 +78,7 @@
                                                 <li>Activities will only be created for emails sent through chatter in <strong>Sales Orders</strong>, <strong>CRM Leads</strong>, and <strong>Helpdesk Tickets</strong></li>
                                                 <li>Only <strong>external emails</strong> (to customers/partners) will trigger activity creation</li>
                                                 <li>Users must have <strong>write access</strong> to the record to create activities</li>
-                                                <li>Deactivated groups will not trigger activity creation even if selected</li>
+                                                <li>Only active groups will trigger activity creation</li>
                                             </ul>
                                         </div>
                                     </div>

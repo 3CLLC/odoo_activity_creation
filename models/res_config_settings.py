@@ -13,8 +13,8 @@ class ResConfigSettings(models.TransientModel):
              "This provides automatic tracking of all external communications."
     )
     
-    selected_groups_ids = fields.Many2many(
-        'auto.email.group.config',
+    auto_email_user_groups = fields.Many2many(
+        'res.groups',
         string='User Groups',
         help='Select which user groups will have automatic email activities created'
     )
@@ -25,45 +25,48 @@ class ResConfigSettings(models.TransientModel):
         help="Total number of active users across all selected groups"
     )
     
-    @api.depends('selected_groups_ids', 'selected_groups_ids.active', 'selected_groups_ids.user_count')
+    @api.depends('auto_email_user_groups', 'auto_email_user_groups.users')
     def _compute_total_affected_users(self):
         """Compute total number of users that will be affected by this configuration."""
         for record in self:
-            active_groups = record.selected_groups_ids.filtered('active')
-            record.total_affected_users = sum(group.user_count for group in active_groups)
+            # Get unique users across all selected groups
+            all_users = record.auto_email_user_groups.mapped('users').filtered('active')
+            # Remove duplicates by converting to set and back
+            unique_users = self.env['res.users'].browse(list(set(all_users.ids)))
+            record.total_affected_users = len(unique_users)
     
-    @api.constrains('auto_email_activity_enabled', 'selected_groups_ids')
+    @api.constrains('auto_email_activity_enabled', 'auto_email_user_groups')
     def _check_configuration_validity(self):
         """Validate configuration makes sense."""
         for record in self:
-            if record.auto_email_activity_enabled:
-                active_groups = record.selected_groups_ids.filtered('active')
-                if not active_groups:
-                    raise ValidationError(_(
-                        "Auto Email Activity Creation is enabled but no active user groups are selected. "
-                        "Please select at least one active user group."
-                    ))
+            if record.auto_email_activity_enabled and not record.auto_email_user_groups:
+                raise ValidationError(_(
+                    "Auto Email Activity Creation is enabled but no user groups are selected. "
+                    "Please select at least one user group."
+                ))
     
     @api.model
     def get_values(self):
         """Override to load current group configuration."""
         res = super(ResConfigSettings, self).get_values()
         
-        # Load all active group configurations
-        active_groups = self.env['auto.email.group.config'].search([('active', '=', True)])
-        res['selected_groups_ids'] = [(6, 0, active_groups.ids)]
+        # Load groups from active configurations
+        active_configs = self.env['auto.email.group.config'].search([('active', '=', True)])
+        selected_group_ids = active_configs.mapped('group_id.id')
+        res['auto_email_user_groups'] = [(6, 0, selected_group_ids)]
         
         return res
     
     def set_values(self):
         """Override to save group configuration."""
         super(ResConfigSettings, self).set_values()
-        # The Many2many field handles the configuration updates automatically
+        
+        # Sync the selected groups with auto.email.group.config records
+        self._sync_group_configurations()
         
         # Log configuration changes for audit purposes
         if self.auto_email_activity_enabled:
-            active_groups = self.selected_groups_ids.filtered('active')
-            group_names = [group.group_id.name for group in active_groups]
+            group_names = self.auto_email_user_groups.mapped('name')
             self.env['ir.logging'].sudo().create({
                 'name': 'auto_email_activity_creation',
                 'type': 'server',
@@ -74,30 +77,54 @@ class ResConfigSettings(models.TransientModel):
                 'line': '1'
             })
     
-    def action_add_user_group(self):
-        """Action to open wizard for adding new user groups."""
-        return {
-            'name': _('Add User Groups'),
-            'type': 'ir.actions.act_window',
-            'res_model': 'auto.email.group.config',
-            'view_mode': 'tree,form',
-            'target': 'new',
-            'context': {
-                'default_active': True,
-            }
-        }
+    def _sync_group_configurations(self):
+        """Sync selected groups with auto.email.group.config records."""
+        # Get currently selected group IDs
+        selected_group_ids = set(self.auto_email_user_groups.ids)
+        
+        # Get existing config records
+        existing_configs = self.env['auto.email.group.config'].search([])
+        existing_group_ids = set(existing_configs.mapped('group_id.id'))
+        
+        # Groups to add (selected but not in config)
+        groups_to_add = selected_group_ids - existing_group_ids
+        
+        # Groups to activate (selected and in config but inactive)
+        groups_to_activate = selected_group_ids & existing_group_ids
+        
+        # Groups to deactivate (in config but not selected)
+        groups_to_deactivate = existing_group_ids - selected_group_ids
+        
+        # Create new config records for new groups
+        for group_id in groups_to_add:
+            self.env['auto.email.group.config'].create({
+                'group_id': group_id,
+                'active': True
+            })
+        
+        # Activate selected existing configs
+        configs_to_activate = existing_configs.filtered(
+            lambda c: c.group_id.id in groups_to_activate
+        )
+        configs_to_activate.write({'active': True})
+        
+        # Deactivate unselected configs
+        configs_to_deactivate = existing_configs.filtered(
+            lambda c: c.group_id.id in groups_to_deactivate
+        )
+        configs_to_deactivate.write({'active': False})
     
-    def action_view_selected_groups(self):
-        """Action to view and manage selected user groups."""
+    def action_view_group_configs(self):
+        """Action to view and manage group configurations."""
         return {
-            'name': _('Manage User Groups for Auto Email Activities'),
+            'name': _('Auto Email Activity Group Configuration'),
             'type': 'ir.actions.act_window',
             'res_model': 'auto.email.group.config',
-            'view_mode': 'tree,form',
-            'domain': [('id', 'in', self.selected_groups_ids.ids)],
+            'view_mode': 'list,form',
+            'domain': [('active', '=', True)],
             'context': {
                 'create': True,
                 'edit': True,
-                'delete': True,
+                'delete': False,  # Don't allow deletion, only deactivation
             }
         }
