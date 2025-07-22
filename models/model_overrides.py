@@ -1,82 +1,112 @@
 from odoo import models, api, fields, _
-from odoo.exceptions import UserError, AccessError
+from odoo.exceptions import AccessError
 import logging
 
 _logger = logging.getLogger(__name__)
 
-class MailThread(models.AbstractModel):
-    _inherit = 'mail.thread'
+class SaleOrder(models.Model):
+    _inherit = 'sale.order'
     
-    @api.returns('mail.message', lambda value: value.id)
     def message_post(self, **kwargs):
         """Override message_post to create an activity when sending an external email via chatter."""
         
-        # Debug logging - let's see what's happening
-        _logger.info(f"=== DEBUG: message_post called on {self._name} ===")
-        _logger.info(f"DEBUG: kwargs = {kwargs}")
-        _logger.info(f"DEBUG: context = {self.env.context}")
+        # Call original method to create the message first
+        message = super(SaleOrder, self).message_post(**kwargs)
+        
+        # Try to create activity for this message
+        self._maybe_create_email_activity(message)
+        
+        return message
+
+class CrmLead(models.Model):
+    _inherit = 'crm.lead'
+    
+    def message_post(self, **kwargs):
+        """Override message_post to create an activity when sending an external email via chatter."""
         
         # Call original method to create the message first
-        message = super(MailThread, self).message_post(**kwargs)
+        message = super(CrmLead, self).message_post(**kwargs)
         
-        _logger.info(f"DEBUG: Created message ID {message.id if message else 'None'}")
-        if message:
-            _logger.info(f"DEBUG: Message type = {message.message_type}")
-            _logger.info(f"DEBUG: Message email_from = {message.email_from}")
-            _logger.info(f"DEBUG: Message partner_ids = {message.partner_ids}")
-            _logger.info(f"DEBUG: Message author_id = {message.author_id}")
+        # Try to create activity for this message
+        self._maybe_create_email_activity(message)
+        
+        return message
+
+class HelpdeskTicket(models.Model):
+    _inherit = 'helpdesk.ticket'
+    
+    def message_post(self, **kwargs):
+        """Override message_post to create an activity when sending an external email via chatter."""
+        
+        # Call original method to create the message first
+        message = super(HelpdeskTicket, self).message_post(**kwargs)
+        
+        # Try to create activity for this message
+        self._maybe_create_email_activity(message)
+        
+        return message
+
+# Common mixin for the activity creation logic
+class AutoEmailActivityMixin(models.AbstractModel):
+    _name = 'auto.email.activity.mixin'
+    _description = 'Mixin for automatic email activity creation'
+    
+    def _maybe_create_email_activity(self, message):
+        """Check if we should create an email activity and create it if appropriate."""
+        
+        _logger.info(f"=== DEBUG: Checking message {message.id if message else 'None'} on {self._name}:{self.id} ===")
         
         # Skip processing if this is a recursive call or system-generated message
         if self.env.context.get('auto_email_activity_skip'):
             _logger.info("DEBUG: Skipping due to context flag")
-            return message
+            return
             
-        # Only process email messages
-        if not message or message.message_type != 'email':
-            _logger.info(f"DEBUG: Skipping - not email message (type: {message.message_type if message else 'None'})")
-            return message
+        if not message:
+            _logger.info("DEBUG: No message created")
+            return
             
+        _logger.info(f"DEBUG: Message type = {message.message_type}")
+        _logger.info(f"DEBUG: Message subtype = {message.subtype_id.name if message.subtype_id else 'None'}")
+        _logger.info(f"DEBUG: Message email_from = {message.email_from}")
+        _logger.info(f"DEBUG: Message partner_ids = {[p.name for p in message.partner_ids]}")
+        _logger.info(f"DEBUG: Message author_id = {message.author_id.name if message.author_id else 'None'}")
+        
         # Check if feature is enabled
         try:
             enabled = self.env['ir.config_parameter'].get_param('auto_email_activity_creation.enabled', 'True') == 'True'
             if not enabled:
-                return message
+                _logger.info("DEBUG: Feature disabled")
+                return
         except AccessError:
-            # If user can't read config parameters, assume disabled for security
             _logger.warning(f"User {self.env.user.login} cannot read auto email activity config - feature disabled")
-            return message
+            return
             
         # Check if the user belongs to any of the configured groups
         if not self._user_in_configured_groups():
-            return message
-        
-        # Check if we're in the correct application context (Helpdesk or Sales)
-        current_model = self._name
-        
-        # Check if the model belongs to Helpdesk or Sales application
-        is_helpdesk_model = self._is_helpdesk_model(current_model)
-        is_sales_model = self._is_sales_model(current_model)
-        
-        if not (is_helpdesk_model or is_sales_model):
-            return message
+            _logger.info("DEBUG: User not in configured groups")
+            return
             
-        # Check if this is an outgoing external email
-        if not self._is_outgoing_external_email(message):
-            return message
+        # Check if this is an outgoing message to external recipients
+        if not self._is_outgoing_external_message(message):
+            _logger.info("DEBUG: Not an outgoing external message")
+            return
             
         # Check if user has permission to create activities on this record
         if not self._has_required_permissions():
             _logger.info(f"User {self.env.user.login} lacks permission to create activity on {self._name}:{self.id}")
-            return message
+            return
             
         # Get recipients for activity summary
         external_emails = self._get_external_recipients(message)
 
         if not external_emails:
-            return message
+            _logger.info("DEBUG: No external recipients found")
+            return
             
         # Create a completed activity
         try:
+            _logger.info("DEBUG: Creating email activity...")
+            
             # Use context to prevent recursive calls
             with_context = self.env.with_context(auto_email_activity_skip=True)
             activity_type = with_context.env.ref('mail.mail_activity_data_email')
@@ -96,40 +126,44 @@ class MailThread(models.AbstractModel):
             activity = with_context.env['mail.activity'].create(activity_values)
             activity.action_done()
             
-            _logger.info(f"Created completed email activity for message {message.id}")
+            _logger.info(f"Successfully created completed email activity for message {message.id}")
             
         except Exception as e:
             _logger.error(f"Failed to create email activity: {str(e)}")
             # Don't raise exception, just log it - we don't want to interrupt the email flow
-        
-        return message
     
-    def _is_outgoing_external_email(self, message):
-        """Check if this is an outgoing email in a Helpdesk/Sales context."""
+    def _is_outgoing_external_message(self, message):
+        """Check if this is an outgoing message to external recipients."""
         if not message:
             return False
             
-        # Must be an email message type
-        if message.message_type != 'email':
-            return False
-        
-        # Must have sender (outgoing)
-        if not message.email_from:
-            return False
-            
         # Check if this message was created by the current user
-        # (sender email might be overridden to department email)
         if message.author_id != self.env.user.partner_id:
+            _logger.info(f"DEBUG: Message author {message.author_id.name if message.author_id else 'None'} != current user {self.env.user.partner_id.name}")
             return False
         
         # Must have recipients
         if not message.partner_ids:
+            _logger.info("DEBUG: No partner recipients")
             return False
+            
+        # Check if it's a comment (chatter message) - this is what "Send Message" creates
+        if message.message_type == 'comment' and message.subtype_id:
+            subtype_name = message.subtype_id.name or ''
+            _logger.info(f"DEBUG: Comment message with subtype: {subtype_name}")
+            # Accept comments that are likely to be external communications
+            return True
+            
+        # Also accept actual email messages
+        if message.message_type == 'email':
+            _logger.info("DEBUG: Email message type")
+            return True
         
-        return True
+        _logger.info(f"DEBUG: Message type '{message.message_type}' not recognized as outgoing")
+        return False
     
     def _get_external_recipients(self, message):
-        """Get email recipients - simplified for Helpdesk/Sales context."""
+        """Get email recipients - exclude internal users."""
         if not message or not message.partner_ids:
             return []
             
@@ -138,11 +172,13 @@ class MailThread(models.AbstractModel):
         for partner in message.partner_ids:
             # Skip internal users
             if partner.user_ids:
+                _logger.info(f"DEBUG: Skipping internal user {partner.name}")
                 continue
                 
             email = partner.email or partner.name
             if email:
                 recipient_emails.append(email)
+                _logger.info(f"DEBUG: Added external recipient {email}")
         
         return recipient_emails
     
@@ -155,16 +191,22 @@ class MailThread(models.AbstractModel):
             ])
             
             if not active_group_configs:
+                _logger.info("DEBUG: No active group configurations found")
                 return False
             
             # Get the group IDs from the configurations
             configured_group_ids = active_group_configs.mapped('group_id.id')
+            _logger.info(f"DEBUG: Configured group IDs: {configured_group_ids}")
             
             # Check if current user belongs to any of these groups
             user_group_ids = self.env.user.groups_id.ids
+            _logger.info(f"DEBUG: User group IDs: {user_group_ids}")
             
             # Return True if there's any intersection
-            return bool(set(configured_group_ids) & set(user_group_ids))
+            intersection = set(configured_group_ids) & set(user_group_ids)
+            result = bool(intersection)
+            _logger.info(f"DEBUG: User in configured groups: {result} (intersection: {intersection})")
+            return result
             
         except Exception as e:
             _logger.warning(f"Error checking user groups for {self.env.user.login}: {str(e)}")
@@ -185,31 +227,8 @@ class MailThread(models.AbstractModel):
         except Exception as e:
             _logger.warning(f"Permission check failed: {str(e)}")
             return False
-        
-    def _is_helpdesk_model(self, model_name):
-        """Check if the model belongs to Helpdesk application."""
-        if not model_name:
-            return False
-            
-        helpdesk_models = [
-            'helpdesk.ticket', 
-            'helpdesk.team', 
-            'helpdesk.tag',
-            'helpdesk.stage',
-            'helpdesk.ticket.type'
-        ]
-        return model_name in helpdesk_models
-    
-    def _is_sales_model(self, model_name):
-        """Check if the model belongs to Sales application."""
-        if not model_name:
-            return False
-            
-        sales_models = [
-            'sale.order',
-            'sale.order.line',
-            'sale.report',
-            'crm.lead',
-            'crm.team'
-        ]
-        return model_name in sales_models
+
+# Make the models inherit from the mixin
+SaleOrder._inherit = ['sale.order', 'auto.email.activity.mixin']
+CrmLead._inherit = ['crm.lead', 'auto.email.activity.mixin']  
+HelpdeskTicket._inherit = ['helpdesk.ticket', 'auto.email.activity.mixin']
