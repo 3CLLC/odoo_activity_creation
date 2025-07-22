@@ -64,18 +64,12 @@ class ResConfigSettings(models.TransientModel):
         # Sync the selected groups with auto.email.group.config records
         self._sync_group_configurations()
         
-        # Log configuration changes for audit purposes
+        # Log configuration changes for audit purposes using standard logging
         if self.auto_email_activity_enabled:
             group_names = self.auto_email_user_groups.mapped('name')
-            self.env['ir.logging'].sudo().create({
-                'name': 'auto_email_activity_creation',
-                'type': 'server',
-                'level': 'INFO',
-                'dbname': self.env.cr.dbname,
-                'message': f"Auto Email Activity Configuration updated. Active groups: {', '.join(group_names)}",
-                'func': 'set_values',
-                'line': '1'
-            })
+            import logging
+            _logger = logging.getLogger(__name__)
+            _logger.info(f"Auto Email Activity Configuration updated. Active groups: {', '.join(group_names)}")
     
     def _sync_group_configurations(self):
         """Sync selected groups with auto.email.group.config records."""
