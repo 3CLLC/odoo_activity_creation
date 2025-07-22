@@ -4,8 +4,8 @@ import logging
 
 _logger = logging.getLogger(__name__)
 
-class SaleOrder(models.Model):
-    _inherit = 'sale.order'
+class CrmLead(models.Model):
+    _inherit = 'crm.lead'
     
     def message_post(self, **kwargs):
         """Override message_post to create an activity when sending an external email via chatter."""
@@ -109,16 +109,48 @@ class SaleOrder(models.Model):
             _logger.info(f"DEBUG: Message author {message.author_id.name if message.author_id else 'None'} != current user {self.env.user.partner_id.name}")
             return False
         
-        # Must have recipients
-        if not message.partner_ids:
-            _logger.info("DEBUG: No partner recipients")
+        # For chatter messages, check if there are recipients in the message
+        # Sometimes partners are in different fields or contexts
+        has_recipients = False
+        
+        # Check partner_ids first
+        if message.partner_ids:
+            _logger.info(f"DEBUG: Found recipients in partner_ids: {[p.name for p in message.partner_ids]}")
+            has_recipients = True
+        
+        # Also check if this is a "Send Message" action by looking at context or other indicators
+        # Check if message has email_from (indicates external communication)
+        if message.email_from and '@' in message.email_from:
+            _logger.info(f"DEBUG: Message has email_from: {message.email_from}")
+            has_recipients = True
+        
+        # Check the message body for email indicators or recipients
+        if message.body and ('To:' in message.body or '@' in message.body):
+            _logger.info("DEBUG: Message body contains recipient indicators")
+            has_recipients = True
+            
+        # Check if this is related to a customer on the record
+        if hasattr(self, 'partner_id') and self.partner_id:
+            _logger.info(f"DEBUG: Record has customer: {self.partner_id.name}")
+            has_recipients = True
+            
+        if not has_recipients:
+            _logger.info("DEBUG: No recipients found anywhere")
             return False
             
-        # Check if it's a comment (chatter message) - this is what "Send Message" creates
-        if message.message_type == 'comment' and message.subtype_id:
-            subtype_name = message.subtype_id.name or ''
-            _logger.info(f"DEBUG: Comment message with subtype: {subtype_name}")
-            # Accept comments that are likely to be external communications
+        # Accept comment messages (chatter "Send Message") and email messages
+        if message.message_type == 'comment':
+            # Check if subtype suggests external communication
+            if message.subtype_id and message.subtype_id.name:
+                subtype_name = message.subtype_id.name
+                _logger.info(f"DEBUG: Comment message with subtype: {subtype_name}")
+                
+                # Accept various subtypes that indicate external communication
+                external_subtypes = ['Discussions', 'Note', 'Email', 'Message']
+                if subtype_name in external_subtypes:
+                    return True
+            
+            # If no specific subtype, assume it's external if it has recipients
             return True
             
         # Also accept actual email messages
@@ -131,21 +163,36 @@ class SaleOrder(models.Model):
     
     def _get_external_recipients(self, message):
         """Get email recipients - exclude internal users."""
-        if not message or not message.partner_ids:
-            return []
-            
         recipient_emails = []
         
-        for partner in message.partner_ids:
-            # Skip internal users
-            if partner.user_ids:
-                _logger.info(f"DEBUG: Skipping internal user {partner.name}")
-                continue
-                
-            email = partner.email or partner.name
-            if email:
-                recipient_emails.append(email)
-                _logger.info(f"DEBUG: Added external recipient {email}")
+        # First, try to get recipients from partner_ids
+        if message and message.partner_ids:
+            for partner in message.partner_ids:
+                # Skip internal users
+                if partner.user_ids:
+                    _logger.info(f"DEBUG: Skipping internal user {partner.name}")
+                    continue
+                    
+                email = partner.email or partner.name
+                if email:
+                    recipient_emails.append(email)
+                    _logger.info(f"DEBUG: Added external recipient {email}")
+        
+        # If no partners found, try to get recipient from the record's customer
+        if not recipient_emails and hasattr(self, 'partner_id') and self.partner_id:
+            partner = self.partner_id
+            # Skip if this partner is an internal user
+            if not partner.user_ids:
+                email = partner.email or partner.name
+                if email:
+                    recipient_emails.append(email)
+                    _logger.info(f"DEBUG: Added record customer as recipient: {email}")
+        
+        # If still no recipients, try to extract from email_from (for display purposes)
+        if not recipient_emails and message and message.email_from:
+            # This is a fallback - we assume if there's an email_from, there was a recipient
+            recipient_emails.append("External Contact")
+            _logger.info(f"DEBUG: Using fallback recipient indicator")
         
         return recipient_emails
     
