@@ -11,7 +11,7 @@ class CrmLead(models.Model):
         """Override message_post to create an activity when sending an external email via chatter."""
         
         # Call original method to create the message first
-        message = super(SaleOrder, self).message_post(**kwargs)
+        message = super(CrmLead, self).message_post(**kwargs)
         
         # Try to create activity for this message
         self._maybe_create_email_activity(message)
@@ -110,11 +110,11 @@ class CrmLead(models.Model):
             _logger.info(f"DEBUG: Message author {message.author_id.name if message.author_id else 'None'} != current user {self.env.user.partner_id.name}")
             return False
         
-        # Check if this is a customer message using subtype XML ID
-        subtype_xmlid = message.subtype_id.xml_id if message.subtype_id else False
-        is_customer_message = subtype_xmlid == 'mail.mt_comment'
+        # Check if this is a customer message using message type
+        message_type = message.message_type
+        is_customer_message = message_type == 'comment'
         
-        _logger.info(f"DEBUG: Subtype XML ID: {subtype_xmlid}")
+        _logger.info(f"DEBUG: Message type: {message_type}")
         _logger.info(f"DEBUG: Is customer message: {is_customer_message}")
         
         return is_customer_message

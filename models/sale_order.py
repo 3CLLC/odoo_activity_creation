@@ -110,11 +110,11 @@ class SaleOrder(models.Model):
             _logger.info(f"DEBUG: Message author {message.author_id.name if message.author_id else 'None'} != current user {self.env.user.partner_id.name}")
             return False
         
-        # Check if this is a customer message using subtype XML ID
-        subtype_xmlid = message.subtype_id.xml_id if message.subtype_id else False
-        is_customer_message = subtype_xmlid == 'mail.mt_comment'
+        # Check if this is a customer message using message type
+        message_type = message.message_type
+        is_customer_message = message_type == 'comment'
         
-        _logger.info(f"DEBUG: Subtype XML ID: {subtype_xmlid}")
+        _logger.info(f"DEBUG: Message type: {message_type}")
         _logger.info(f"DEBUG: Is customer message: {is_customer_message}")
         
         return is_customer_message
