@@ -72,7 +72,7 @@ class HelpdeskTicket(models.Model):
             _logger.info("DEBUG: No external recipients found")
             return
             
-        # Create a completed activity using two-step process
+        # Create a completed activity using custom approach
         try:
             _logger.info("DEBUG: Creating email activity...")
             
@@ -98,11 +98,38 @@ class HelpdeskTicket(models.Model):
             # Create activity with context to prevent recursion
             activity = self.env['mail.activity'].with_context(auto_email_activity_skip=True).create(activity_values)
             
-            _logger.info(f"DEBUG: Created activity {activity.id}, now marking as done...")
+            _logger.info(f"DEBUG: Created activity {activity.id}, now marking as done manually...")
             
-            # Step 2: Immediately mark the activity as done
-            # This will archive the activity (set active=False) and set date_done
-            activity.with_context(auto_email_activity_skip=True).action_done()
+            # Step 2: Manually mark as done
+            # Archive the activity manually (this is what action_done() does internally)
+            activity.with_context(auto_email_activity_skip=True).write({
+                'active': False,
+                'date_done': fields.Datetime.now()
+            })
+            
+            # Step 3: Post our own custom internal note as OdooBot
+            # Get OdooBot user
+            odoobot_user = self.env.ref('base.user_root')
+            
+            # Format the email date (use message creation date)
+            email_date = message.create_date.strftime('%B %d, %Y at %I:%M %p') if message.create_date else fields.Datetime.now().strftime('%B %d, %Y at %I:%M %p')
+            
+            # Create the custom message body
+            custom_body = _(
+                "Activity auto-completed for %s!<br/>"
+                "Email sent to %s on %s."
+            ) % (
+                self.env.user.name,
+                ', '.join(external_emails[:3]) + (', ...' if len(external_emails) > 3 else ''),
+                email_date
+            )
+            
+            self.with_context(auto_email_activity_skip=True, mail_create_nosubscribe=True).message_post(
+                body=custom_body,
+                message_type='notification',
+                subtype_xmlid='mail.mt_note',  # Internal note
+                author_id=odoobot_user.partner_id.id,  # Post as OdooBot
+            )
             
             _logger.info(f"Successfully created and completed email activity for message {message.id}")
             
