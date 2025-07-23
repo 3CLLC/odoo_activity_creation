@@ -72,14 +72,18 @@ class CrmLead(models.Model):
             _logger.info("DEBUG: No external recipients found")
             return
             
-        # Create a completed activity
+        # Create a completed activity using two-step process
         try:
             _logger.info("DEBUG: Creating email activity...")
             
-            # Use context to prevent recursive calls
+            # Get the email activity type and ensure it keeps done activities
             activity_type = self.env.ref('mail.mail_activity_data_email')
             
-            # Create and mark as done in one step
+            # Ensure the activity type is configured to keep done activities
+            if not activity_type.keep_done:
+                activity_type.sudo().write({'keep_done': True})
+            
+            # Step 1: Create the activity normally (will be active/todo initially)
             activity_values = {
                 'summary': _('Email sent to %s') % ', '.join(external_emails[:3]) + 
                         (', ...' if len(external_emails) > 3 else ''),
@@ -89,14 +93,18 @@ class CrmLead(models.Model):
                 'res_model_id': self.env['ir.model']._get(self._name).id,
                 'res_id': self.id,
                 'date_deadline': fields.Date.today(),
-                'date_done': fields.Datetime.now(),  # Mark as completed immediately
-                'state': 'done',  # Set state to done
             }
             
-            # Create activity with context to prevent recursion - already completed
+            # Create activity with context to prevent recursion
             activity = self.env['mail.activity'].with_context(auto_email_activity_skip=True).create(activity_values)
             
-            _logger.info(f"Successfully created completed email activity for message {message.id}")
+            _logger.info(f"DEBUG: Created activity {activity.id}, now marking as done...")
+            
+            # Step 2: Immediately mark the activity as done
+            # This will archive the activity (set active=False) and set date_done
+            activity.with_context(auto_email_activity_skip=True).action_done()
+            
+            _logger.info(f"Successfully created and completed email activity for message {message.id}")
             
         except Exception as e:
             _logger.error(f"Failed to create email activity: {str(e)}")
