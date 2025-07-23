@@ -7,18 +7,20 @@ _logger = logging.getLogger(__name__)
 class HelpdeskTicket(models.Model):
     _inherit = 'helpdesk.ticket'
     
-    def message_post(self, **kwargs):
+    def message_post(self, *args, **kwargs):
         """Override message_post to create an activity when sending an external email via chatter."""
         
+        subtype_xmlid = kwargs.get('subtype_xmlid')
+
         # Call original method to create the message first
-        message = super(HelpdeskTicket, self).message_post(**kwargs)
+        message = super(HelpdeskTicket, self).message_post(*args, **kwargs)
         
         # Try to create activity for this message
-        self._maybe_create_email_activity(message)
+        self._maybe_create_email_activity(message, subtype_xmlid)
         
         return message
     
-    def _maybe_create_email_activity(self, message):
+    def _maybe_create_email_activity(self, message, subtype_xmlid):
         """Check if we should create an email activity and create it if appropriate."""
         
         _logger.info(f"=== DEBUG: Checking message {message.id if message else 'None'} on {self._name}:{self.id} ===")
@@ -33,7 +35,7 @@ class HelpdeskTicket(models.Model):
             return
             
         _logger.info(f"DEBUG: Message type = {message.message_type}")
-        _logger.info(f"DEBUG: Message subtype = {message.subtype_id.name if message.subtype_id else 'None'}")
+        _logger.info(f"DEBUG: Message subtype = {subtype_xmlid if subtype_xmlid else 'None'}")
         _logger.info(f"DEBUG: Message email_from = {message.email_from}")
         _logger.info(f"DEBUG: Message partner_ids = {[p.name for p in message.partner_ids]}")
         _logger.info(f"DEBUG: Message author_id = {message.author_id.name if message.author_id else 'None'}")
@@ -54,7 +56,7 @@ class HelpdeskTicket(models.Model):
             return
             
         # Check if this is an outgoing message to external recipients
-        if not self._is_outgoing_external_message(message):
+        if not self._is_outgoing_external_message(message, subtype_xmlid):
             _logger.info("DEBUG: Not an outgoing external message")
             return
             
@@ -100,7 +102,7 @@ class HelpdeskTicket(models.Model):
             _logger.error(f"Failed to create email activity: {str(e)}")
             # Don't raise exception, just log it - we don't want to interrupt the email flow
     
-    def _is_outgoing_external_message(self, message):
+    def _is_outgoing_external_message(self, message, subtype_xmlid):
         """Check if this is an outgoing message to external recipients."""
         if not message:
             return False
@@ -111,10 +113,8 @@ class HelpdeskTicket(models.Model):
             return False
         
         # Check if this is a customer message using message type
-        message_type = message.message_type
-        is_customer_message = message_type == 'comment'
+        is_customer_message = subtype_xmlid == 'mail.mt_comment'
         
-        _logger.info(f"DEBUG: Message type: {message_type}")
         _logger.info(f"DEBUG: Is customer message: {is_customer_message}")
         
         return is_customer_message
