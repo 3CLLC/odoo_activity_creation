@@ -1,5 +1,6 @@
 from odoo import models, api, fields, _
 from odoo.exceptions import AccessError
+from markupsafe import Markup
 import logging
 
 _logger = logging.getLogger(__name__)
@@ -115,14 +116,16 @@ class HelpdeskTicket(models.Model):
             email_date = message.create_date.strftime('%B %d, %Y at %I:%M %p') if message.create_date else fields.Datetime.now().strftime('%B %d, %Y at %I:%M %p')
             
             # Create the custom message body
-            custom_body = _(
-                "<p>Activity auto-completed for %s!</p>"
+            translated_message = _(
+                "<p>Activity auto-completed for <strong>%s</strong>!</p>"
                 "<p>Email sent to %s on %s.</p>"
             ) % (
                 self.env.user.name,
                 ', '.join(external_emails[:3]) + (', ...' if len(external_emails) > 3 else ''),
                 email_date
             )
+
+            custom_body = Markup(translated_message)
             
             self.with_context(auto_email_activity_skip=True, mail_create_nosubscribe=True).message_post(
                 body=custom_body,
