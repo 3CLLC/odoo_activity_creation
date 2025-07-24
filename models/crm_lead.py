@@ -112,9 +112,18 @@ class CrmLead(models.Model):
             # Get OdooBot user
             odoobot_user = self.env.ref('base.user_root')
             
-            # Format the email date (use message creation date)
-            email_date = message.create_date.strftime('%B %d, %Y at %I:%M %p') if message.create_date else fields.Datetime.now().strftime('%B %d, %Y at %I:%M %p')
-            
+            # Format the email date in user's timezone (use message creation date)
+            if message.create_date:
+                # Convert UTC datetime to user's timezone
+                user_tz = self.env.user.tz or 'UTC'
+                local_dt = fields.Datetime.context_timestamp(self.with_context(tz=user_tz), message.create_date)
+                email_date = local_dt.strftime('%B %d, %Y at %I:%M %p')
+            else:
+                # Fallback to current time in user's timezone
+                user_tz = self.env.user.tz or 'UTC'
+                local_dt = fields.Datetime.context_timestamp(self.with_context(tz=user_tz), fields.Datetime.now())
+                email_date = local_dt.strftime('%B %d, %Y at %I:%M %p')
+
             # Create the custom message body
             translated_message = _(
                 "<p>Activity auto-completed for <strong>%s</strong>!</p>"
