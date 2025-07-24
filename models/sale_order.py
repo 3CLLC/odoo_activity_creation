@@ -116,8 +116,8 @@ class SaleOrder(models.Model):
             
             # Create the custom message body
             custom_body = _(
-                "Activity auto-completed for %s!<br/>"
-                "Email sent to %s on %s."
+                "<p>Activity auto-completed for %s!</p>"
+                "<p>Email sent to %s on %s.</p>"
             ) % (
                 self.env.user.name,
                 ', '.join(external_emails[:3]) + (', ...' if len(external_emails) > 3 else ''),
