@@ -111,27 +111,12 @@ class CrmLead(models.Model):
             # Step 3: Post our own custom internal note as OdooBot
             # Get OdooBot user
             odoobot_user = self.env.ref('base.user_root')
-            
-            # Format the email date in user's timezone (use message creation date)
-            if message.create_date:
-                # Convert UTC datetime to user's timezone
-                user_tz = self.env.user.tz or 'UTC'
-                local_dt = fields.Datetime.context_timestamp(self.with_context(tz=user_tz), message.create_date)
-                email_date = local_dt.strftime('%B %d, %Y at %I:%M %p')
-            else:
-                # Fallback to current time in user's timezone
-                user_tz = self.env.user.tz or 'UTC'
-                local_dt = fields.Datetime.context_timestamp(self.with_context(tz=user_tz), fields.Datetime.now())
-                email_date = local_dt.strftime('%B %d, %Y at %I:%M %p')
 
             # Create the custom message body
             translated_message = _(
-                "<p>Activity auto-completed for <strong>%s</strong>!</p>"
-                "<p>Email sent to %s on %s.</p>"
+                "<p>Email activity auto-completed for <strong>%s</strong>!</p>"
             ) % (
-                self.env.user.name,
-                ', '.join(external_emails[:3]) + (', ...' if len(external_emails) > 3 else ''),
-                email_date
+                self.env.user.name
             )
 
             custom_body = Markup(translated_message)
